@@ -87,7 +87,33 @@ python client.py silospan.sabyasacheemishra.com:8080 \
 
 ---
 
-## 4. Running persistently in the Background (Daemon)
+## 4. Running as a Desktop GUI Application (No Terminal Required!)
+
+For non-technical operators or administrators, a graphical interface can be used to set parameters, select files, and view logs.
+
+### Running via Python
+Activate your virtual environment and run:
+```bash
+python client_gui.py
+```
+This opens a dark-themed control window containing inputs for your Hub address, credentials, dataset settings, and a real-time console log terminal.
+
+### Packaging into a Standalone Executable (.exe)
+You can compile this GUI script into a single, double-clickable executable file that runs on other machines without needing Python installed.
+
+1. Install PyInstaller inside your virtual environment:
+   ```bash
+   pip install pyinstaller
+   ```
+2. Build the executable:
+   ```bash
+   pyinstaller --noconsole --onefile client_gui.py
+   ```
+3. Once completed, find the single `client_gui.exe` (or binary equivalent) inside the newly created `dist/` folder. You can distribute this executable directly to your client operators!
+
+---
+
+## 5. Running persistently in the Background (Daemon)
 
 To ensure the client runs continuously, restarts if it crashes, and boots on system start, deploy it as a service daemon:
 

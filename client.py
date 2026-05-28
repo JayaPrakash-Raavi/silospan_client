@@ -196,44 +196,51 @@ if __name__ == "__main__":
     parser.add_argument("--dp-clipping", type=float, default=1.0, help="Differential privacy update clipping norm.")
     parser.add_argument("--device", type=str, default="cpu", help="Device to use ('cpu' or 'cuda').")
     parser.add_argument("--ssl-ca", type=str, default="", help="Path to CA root certificate for secure TLS.")
-    parser.add_argument("--api-key", type=str, default="", help="Client authentication API key for auto-enrollment.")
-    parser.add_argument("--api-url", type=str, default="", help="FastAPI portal base URL (optional).")
-    
-    args = parser.parse_args()
-    
+def start_client(
+    server_address: str = "localhost:8080",
+    partition: int = 0,
+    total_partitions: int = 2,
+    epochs: int = 1,
+    lr: float = 0.01,
+    dp_sigma: float = 0.0,
+    dp_clipping: float = 1.0,
+    device: str = "cpu",
+    ssl_ca: str = "",
+    api_key: str = "",
+    api_url: str = ""
+):
     # Auto-enroll CA cert if API key is provided and cert is missing
-    if args.api_key and args.ssl_ca:
-        if not os.path.exists(args.ssl_ca):
-            auto_enroll_ca(args.server_address, args.api_key, args.ssl_ca, args.api_url)
+    if api_key and ssl_ca:
+        if not os.path.exists(ssl_ca):
+            auto_enroll_ca(server_address, api_key, ssl_ca, api_url)
 
-    
-    print(f"[SILOSPAN CLIENT] Connecting to Hub: {args.server_address}")
-    print(f"[SILOSPAN CLIENT] Loading local data partition {args.partition}/{args.total_partitions}...")
+    print(f"[SILOSPAN CLIENT] Connecting to Hub: {server_address}")
+    print(f"[SILOSPAN CLIENT] Loading local data partition {partition}/{total_partitions}...")
     
     train_loader, test_loader = load_diabetes_data(
-        partition_id=args.partition, 
-        num_partitions=args.total_partitions, 
+        partition_id=partition, 
+        num_partitions=total_partitions, 
         batch_size=32
     )
     
     client = SiloSpanClient(
-        partition_id=args.partition,
+        partition_id=partition,
         train_loader=train_loader,
         test_loader=test_loader,
-        epochs=args.epochs,
-        lr=args.lr,
-        dp_sigma=args.dp_sigma,
-        dp_clipping=args.dp_clipping,
-        device=args.device
+        epochs=epochs,
+        lr=lr,
+        dp_sigma=dp_sigma,
+        dp_clipping=dp_clipping,
+        device=device
     )
     
     # Load CA root certificates for secure TLS connection
     root_certificates = None
-    if args.ssl_ca:
+    if ssl_ca:
         try:
             from pathlib import Path
             print("[SILOSPAN CLIENT] Establishing secure gRPC TLS channel using Root CA cert...")
-            root_certificates = Path(args.ssl_ca).read_bytes()
+            root_certificates = Path(ssl_ca).read_bytes()
         except Exception as e:
             print(f"[SILOSPAN CLIENT] Warning: Failed to load CA certificate: {e}. Falling back to insecure connection.")
 
@@ -244,9 +251,9 @@ if __name__ == "__main__":
     
     while True:
         try:
-            print(f"[SILOSPAN CLIENT] Connecting to Hub at {args.server_address}...")
+            print(f"[SILOSPAN CLIENT] Connecting to Hub at {server_address}...")
             fl.client.start_client(
-                server_address=args.server_address,
+                server_address=server_address,
                 client=client.to_client(),
                 root_certificates=root_certificates
             )
@@ -260,3 +267,34 @@ if __name__ == "__main__":
             print(f"[SILOSPAN CLIENT] Retrying connection in {retry_delay:.1f} seconds...")
             time.sleep(retry_delay)
             retry_delay = min(retry_delay * backoff_factor, max_delay)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="SiloSpan distributed client node.")
+    parser.add_argument("server_address", type=str, nargs="?", default="localhost:8080", 
+                        help="Address of the centralized hub (e.g. host:port).")
+    parser.add_argument("--partition", type=int, default=0, help="Local partition ID of the dataset.")
+    parser.add_argument("--total-partitions", type=int, default=2, help="Total number of partitions.")
+    parser.add_argument("--epochs", type=int, default=1, help="Local epochs to train in each round.")
+    parser.add_argument("--lr", type=float, default=0.01, help="Learning rate.")
+    parser.add_argument("--dp-sigma", type=float, default=0.0, help="Differential privacy noise multiplier (0.0 to disable).")
+    parser.add_argument("--dp-clipping", type=float, default=1.0, help="Differential privacy update clipping norm.")
+    parser.add_argument("--device", type=str, default="cpu", help="Device to use ('cpu' or 'cuda').")
+    parser.add_argument("--ssl-ca", type=str, default="", help="Path to CA root certificate for secure TLS.")
+    parser.add_argument("--api-key", type=str, default="", help="Client authentication API key for auto-enrollment.")
+    parser.add_argument("--api-url", type=str, default="", help="FastAPI portal base URL (optional).")
+    
+    args = parser.parse_args()
+    
+    start_client(
+        server_address=args.server_address,
+        partition=args.partition,
+        total_partitions=args.total_partitions,
+        epochs=args.epochs,
+        lr=args.lr,
+        dp_sigma=args.dp_sigma,
+        dp_clipping=args.dp_clipping,
+        device=args.device,
+        ssl_ca=args.ssl_ca,
+        api_key=args.api_key,
+        api_url=args.api_url
+    )

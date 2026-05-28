@@ -1,0 +1,10 @@
+flwr>=1.8.0
+torch
+torchvision
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+alembic
+PyJWT
+sentry-sdk

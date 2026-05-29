@@ -249,9 +249,9 @@ class MetricCard(tk.Frame):
         self.lbl_val.configure(text=value)
 
 class TabNavigation(tk.Frame):
-    def __init__(self, parent, tabs_config, initial_tab=0, **kwargs):
+    def __init__(self, parent, initial_tab=0, **kwargs):
         super().__init__(parent, bg="#0F172A", **kwargs)
-        self.tabs_config = tabs_config
+        self.tabs_config = []
         self.buttons = []
         self.active_tab = initial_tab
         
@@ -264,35 +264,39 @@ class TabNavigation(tk.Frame):
         self.content_container = tk.Frame(self, bg="#0F172A")
         self.content_container.pack(fill="both", expand=True)
         
-        for idx, (label, frame) in enumerate(self.tabs_config):
-            btn = tk.Button(
-                self.btn_bar,
-                text=label,
-                command=lambda i=idx: self.select_tab(i),
-                bg="#0F172A",
-                fg="#94A3B8",
-                activebackground="#0F172A",
-                activeforeground="#F8FAFC",
-                relief="flat",
-                bd=0,
-                cursor="hand2",
-                font=("Segoe UI", 10, "bold"),
-                padx=20,
-                pady=8
-            )
-            btn.pack(side="left")
-            self.buttons.append(btn)
-            frame.pack_forget()
-            
-        self.select_tab(self.active_tab)
+    def add_tab(self, label, frame):
+        idx = len(self.tabs_config)
+        btn = tk.Button(
+            self.btn_bar,
+            text=label,
+            command=lambda: self.select_tab(idx),
+            bg="#0F172A",
+            fg="#94A3B8",
+            activebackground="#0F172A",
+            activeforeground="#F8FAFC",
+            relief="flat",
+            bd=0,
+            cursor="hand2",
+            font=("Segoe UI", 10, "bold"),
+            padx=20,
+            pady=8
+        )
+        btn.pack(side="left")
+        self.buttons.append(btn)
+        self.tabs_config.append((label, frame))
+        frame.pack_forget()
         
     def select_tab(self, tab_idx):
-        self.buttons[self.active_tab].configure(fg="#94A3B8")
-        self.tabs_config[self.active_tab][1].pack_forget()
-        
+        if tab_idx < 0 or tab_idx >= len(self.tabs_config):
+            return
+            
+        if len(self.tabs_config) > self.active_tab:
+            self.buttons[self.active_tab].configure(fg="#94A3B8")
+            self.tabs_config[self.active_tab][1].pack_forget()
+            
         self.active_tab = tab_idx
         self.buttons[tab_idx].configure(fg="#3B82F6")
-        self.tabs_config[tab_idx][1].pack(in_=self.content_container, fill="both", expand=True)
+        self.tabs_config[tab_idx][1].pack(fill="both", expand=True)
 
 class SiloSpanClientGUI:
     def __init__(self, root):
@@ -331,24 +335,26 @@ class SiloSpanClientGUI:
         self.status_lbl = tk.Label(status_panel, text="STATUS: IDLE", fg="#94A3B8", bg="#0F172A", font=("Segoe UI", 9, "bold"))
         self.status_lbl.pack(side="right")
 
+        # Add Tabs wrapper
+        self.navigation = TabNavigation(self.root, initial_tab=0)
+        self.navigation.pack(fill="both", expand=True, padx=20)
+
         # Create the sub-frames for Tabs
-        self.dashboard_frame = tk.Frame(self.root, bg="#0F172A", padx=20, pady=10)
-        self.config_frame = tk.Frame(self.root, bg="#0F172A", padx=20, pady=10)
-        self.logs_frame = tk.Frame(self.root, bg="#0F172A", padx=20, pady=10)
+        self.dashboard_frame = tk.Frame(self.navigation.content_container, bg="#0F172A", padx=20, pady=10)
+        self.config_frame = tk.Frame(self.navigation.content_container, bg="#0F172A", padx=20, pady=10)
+        self.logs_frame = tk.Frame(self.navigation.content_container, bg="#0F172A", padx=20, pady=10)
         
         # Init components
         self.setup_dashboard_tab()
         self.setup_config_tab()
         self.setup_logs_tab()
         
-        # Add Tabs wrapper
-        tabs = [
-            ("DASHBOARD", self.dashboard_frame),
-            ("CONFIGURATION", self.config_frame),
-            ("SYSTEM CONSOLE", self.logs_frame)
-        ]
-        self.navigation = TabNavigation(self.root, tabs, initial_tab=0)
-        self.navigation.pack(fill="both", expand=True, padx=20)
+        # Add Tabs to navigation
+        self.navigation.add_tab("DASHBOARD", self.dashboard_frame)
+        self.navigation.add_tab("CONFIGURATION", self.config_frame)
+        self.navigation.add_tab("SYSTEM CONSOLE", self.logs_frame)
+        
+        self.navigation.select_tab(0)
         
         # Redirect stdout and stderr using safe logs queue
         self._orig_stdout = sys.stdout

@@ -1,5 +1,4 @@
 import flwr as fl
-import torch
 import sys
 import argparse
 import numpy as np
@@ -23,14 +22,18 @@ if SENTRY_DSN:
     )
     print("[SILOSPAN CLIENT] Sentry SDK initialized.")
 
+def compute_loss(logits, y):
+    exp_logits = np.exp(logits - np.max(logits, axis=1, keepdims=True))
+    probs = exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
+    n = logits.shape[0]
+    loss = -np.sum(np.log(probs[np.arange(n), y] + 1e-15)) / n
+    return loss
+
 def run_local_backpropagation(model, train_loader, epochs=1, lr=0.01, device="cpu", callback=None, stop_event=None, partition_id=0):
     """
-    Performs standard backpropagation over local client dataset partition.
+    Performs standard backpropagation over local client dataset partition using NumPy.
     """
     model.train()
-    model.to(device)
-    optimizer = torch.optim.SGD(model.parameters(), lr=lr)
-    criterion = torch.nn.CrossEntropyLoss()
     
     for epoch in range(epochs):
         if stop_event and stop_event.is_set():
@@ -42,16 +45,14 @@ def run_local_backpropagation(model, train_loader, epochs=1, lr=0.01, device="cp
         for data, target in train_loader:
             if stop_event and stop_event.is_set():
                 raise InterruptedError("Training interrupted by operator.")
-            data, target = data.to(device), target.to(device)
-            optimizer.zero_grad()
-            output = model(data)
-            loss = criterion(output, target)
-            loss.backward()
-            optimizer.step()
             
-            running_loss += loss.item() * len(data)
-            pred = output.argmax(dim=1, keepdim=True)
-            correct += pred.eq(target.view_as(pred)).sum().item()
+            output = model.forward(data)
+            loss = compute_loss(output, target)
+            model.backward(data, target, lr=lr)
+            
+            running_loss += loss * len(data)
+            pred = output.argmax(axis=1)
+            correct += np.sum(pred == target)
             total += len(data)
         
         epoch_loss = running_loss / total if total > 0 else 0.0
@@ -68,22 +69,18 @@ def run_local_backpropagation(model, train_loader, epochs=1, lr=0.01, device="cp
 
 def run_local_evaluation(model, test_loader, device="cpu"):
     """
-    Evaluates the model on local validation/test sets to report local performance metrics.
+    Evaluates the model on local validation/test sets to report local performance metrics using NumPy.
     """
     model.eval()
-    model.to(device)
-    criterion = torch.nn.CrossEntropyLoss()
     loss = 0.0
     correct = 0
     total = 0
-    with torch.no_grad():
-        for data, target in test_loader:
-            data, target = data.to(device), target.to(device)
-            output = model(data)
-            loss += criterion(output, target).item() * len(data)
-            pred = output.argmax(dim=1, keepdim=True)
-            correct += pred.eq(target.view_as(pred)).sum().item()
-            total += len(data)
+    for data, target in test_loader:
+        output = model.forward(data)
+        loss += compute_loss(output, target) * len(data)
+        pred = output.argmax(axis=1)
+        correct += np.sum(pred == target)
+        total += len(data)
             
     avg_loss = loss / total if total > 0 else 0.0
     accuracy = correct / total if total > 0 else 0.0
@@ -108,12 +105,18 @@ class SiloSpanClient(fl.client.NumPyClient):
         self.round_counter = 0
 
     def get_parameters(self, config):
-        return [val.cpu().numpy() for _, val in self.model.state_dict().items()]
+        params = []
+        for w, b in zip(self.model.weights, self.model.biases):
+            params.append(w)
+            params.append(b)
+        return params
 
     def set_parameters(self, parameters):
-        params_dict = zip(self.model.state_dict().keys(), parameters)
-        state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-        self.model.load_state_dict(state_dict, strict=True)
+        idx = 0
+        for i in range(len(self.model.weights)):
+            self.model.weights[i] = parameters[idx]
+            self.model.biases[i] = parameters[idx+1]
+            idx += 2
 
     def fit(self, parameters, config):
         self.round_counter += 1

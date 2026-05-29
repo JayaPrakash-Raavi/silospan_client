@@ -2,8 +2,35 @@ import os
 import csv
 import urllib.request
 import numpy as np
-import torch
-from torch.utils.data import TensorDataset, DataLoader
+
+class NumpyDataLoader:
+    def __init__(self, features, labels, batch_size=32, shuffle=True):
+        self.features = features
+        self.labels = labels
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.dataset = self  # Mimic the dataset attribute of PyTorch DataLoader
+
+    def __getitem__(self, idx):
+        return self.features[idx], self.labels[idx]
+
+    def __iter__(self):
+        self.indices = np.arange(len(self.features))
+        if self.shuffle:
+            np.random.shuffle(self.indices)
+        self.idx = 0
+        return self
+
+    def __next__(self):
+        if self.idx >= len(self.features):
+            raise StopIteration
+        batch_idx = self.indices[self.idx : self.idx + self.batch_size]
+        self.idx += self.batch_size
+        return self.features[batch_idx], self.labels[batch_idx]
+
+    def __len__(self):
+        return len(self.features)
+
 
 def download_pima_dataset(dest_path="data/pima-indians-diabetes.csv"):
     if not os.path.exists("data"):
@@ -94,14 +121,11 @@ def load_tabular_data(
     local_features = train_features[local_indices]
     local_labels = train_labels[local_indices]
     
-    # Build datasets
-    train_dataset = TensorDataset(torch.tensor(local_features), torch.tensor(local_labels))
     val_features = features[val_indices]
     val_labels = labels[val_indices]
-    val_dataset = TensorDataset(torch.tensor(val_features), torch.tensor(val_labels))
     
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    train_loader = NumpyDataLoader(local_features, local_labels, batch_size=batch_size, shuffle=True)
+    val_loader = NumpyDataLoader(val_features, val_labels, batch_size=batch_size, shuffle=False)
     
     return train_loader, val_loader
 
